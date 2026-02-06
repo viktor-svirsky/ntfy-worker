@@ -6,7 +6,8 @@ Cloudflare Worker that receives notifications and sends them to Discord with AI-
 
 - Accepts POST requests with JSON or text payloads
 - Uses AI models to format messages into rich Discord embeds
-- Supports multiple AI models with fallback
+- Supports multiple AI models with fallback (z-ai/glm-4.5-air:free → arcee-ai/trinity-mini:free)
+- Dynamic avatars based on notification type (success, error, warning, info)
 - Automatic retry logic
 
 ## Environment Variables

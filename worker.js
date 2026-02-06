@@ -114,13 +114,25 @@ export default {
 
     const embed = await getDiscordEmbed(payload);
 
-    // 6. Send to Discord Webhook
+    // 6. Select avatar based on notification type
+    function getAvatarUrl(color) {
+      const avatars = {
+        5763719: "https://cdn-icons-png.flaticon.com/512/190/190411.png",  // Green - Success/Check
+        3447003: "https://cdn-icons-png.flaticon.com/512/2965/2965279.png", // Blue - Info
+        16776960: "https://cdn-icons-png.flaticon.com/512/564/564619.png",  // Yellow - Warning
+        15548997: "https://cdn-icons-png.flaticon.com/512/564/564593.png",  // Red - Error/Alert
+        9807270: "https://cdn-icons-png.flaticon.com/512/4712/4712109.png"  // Grey - Default/Notification
+      };
+      return avatars[color] || avatars[9807270]; // Default to grey notification icon
+    }
+
+    // 7. Send to Discord Webhook
     const res = await fetch(discordUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         username: "System Alerts",
-        avatar_url: "https://cdn-icons-png.flaticon.com/512/4712/4712109.png",
+        avatar_url: getAvatarUrl(embed.color),
         embeds: [embed]
       })
     });
