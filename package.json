@@ -1,0 +1,13 @@
+{
+  "name": "ntfy-worker",
+  "version": "1.0.0",
+  "description": "Discord notification worker with AI-powered formatting",
+  "main": "worker.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": ["cloudflare", "workers", "discord", "notifications"],
+  "author": "",
+  "license": "ISC"
+}
