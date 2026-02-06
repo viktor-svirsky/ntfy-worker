@@ -3,11 +3,21 @@
   "version": "1.0.0",
   "description": "Discord notification worker with AI-powered formatting",
   "main": "worker.js",
+  "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": ["cloudflare", "workers", "discord", "notifications"],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "vitest": "^2.0.0",
+    "wrangler": "^3.0.0"
+  }
 }

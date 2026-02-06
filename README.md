@@ -8,7 +8,11 @@ Cloudflare Worker that receives notifications and sends them to Discord with AI-
 - Uses AI models to format messages into rich Discord embeds
 - Supports multiple AI models with fallback (z-ai/glm-4.5-air:free → arcee-ai/trinity-mini:free)
 - Dynamic avatars based on notification type (success, error, warning, info)
-- Automatic retry logic
+- **Automatic retry logic with exponential backoff**
+  - Retries failed API calls up to 3 times
+  - Exponential backoff: 1s, 2s, 4s
+  - Applies to both OpenRouter API and Discord webhook
+- Comprehensive test suite with unit and integration tests
 
 ## Environment Variables
 
@@ -50,6 +54,41 @@ Run locally:
 ```bash
 npm run dev
 ```
+
+## Testing
+
+Install dependencies:
+```bash
+npm install
+```
+
+Run tests:
+```bash
+npm test                 # Run all tests once
+npm run test:watch       # Run tests in watch mode
+npm run test:coverage    # Run tests with coverage report
+```
+
+### Test Coverage
+
+The test suite includes:
+- **Request validation tests** - Method checks, payload parsing
+- **Retry logic tests** - Exponential backoff, max retry limits
+- **Avatar selection tests** - Color-to-icon mapping
+- **AI model fallback tests** - Primary → secondary → static fallback
+- **Integration tests** - End-to-end notification flows
+- **Error handling tests** - Malformed JSON, API failures
+
+## Retry Logic
+
+The worker implements robust retry logic:
+- **Maximum retries**: 3 attempts
+- **Backoff strategy**: Exponential (1s → 2s → 4s)
+- **Applied to**:
+  - OpenRouter API calls (AI formatting)
+  - Discord webhook deliveries
+
+If all retries fail, the worker falls back to a static notification format.
 
 ## Version
 

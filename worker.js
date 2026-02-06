@@ -1,23 +1,39 @@
 export default {
   async fetch(r, e) {
-    // 1. Check method
+    // 1. Retry utility function with exponential backoff
+    async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          return await fn();
+        } catch (error) {
+          const isLastAttempt = attempt === maxRetries - 1;
+          if (isLastAttempt) throw error;
+
+          const delay = baseDelay * Math.pow(2, attempt);
+          console.log(`Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    // 2. Check method
     if (r.method !== "POST") {
       return new Response("Only POST", { status: 405, headers: { Allow: "POST" } });
     }
 
-    // 2. Validate Configuration
+    // 3. Validate Configuration
     const discordUrl = e.DISCORD_WEBHOOK?.trim();
     if (!discordUrl) {
       return new Response("Error: Missing DISCORD_WEBHOOK_URL environment variable.", { status: 500 });
     }
 
-    // 3. Validate AI Key
+    // 4. Validate AI Key
     const openrouterKey = e.OPENROUTER_API_KEY?.trim();
     if (!openrouterKey) {
       return new Response("Missing OPENROUTER_API_KEY env", { status: 500 });
     }
 
-    // 4. Parse Body
+    // 5. Parse Body
     let payload;
     try {
       const contentType = r.headers.get("content-type") || "";
@@ -48,17 +64,18 @@ export default {
 
       for (const model of models) {
         try {
-          const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${openrouterKey}`,
-              "HTTP-Referer": "https://yourdomain.com",
-              "X-Title": "discord-worker"
-            },
-            body: JSON.stringify({
-              model,
-              messages: [
+          const resp = await retryWithBackoff(async () => {
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${openrouterKey}`,
+                "HTTP-Referer": "https://yourdomain.com",
+                "X-Title": "discord-worker"
+              },
+              body: JSON.stringify({
+                model,
+                messages: [
                 {
                   role: "system",
                   content: `You are an expert Discord notification formatter. Analyze the input log or message and structure it into a beautiful, high-readability JSON Embed.
@@ -87,7 +104,12 @@ export default {
                 { role: "user", content: text }
               ],
               response_format: { type: "json_object" }
-            })
+              })
+            });
+            if (!response.ok) {
+              throw new Error(`API returned ${response.status}`);
+            }
+            return response;
           });
 
           if (!resp.ok) continue;
@@ -126,21 +148,32 @@ export default {
       return avatars[color] || avatars[9807270]; // Default to grey notification icon
     }
 
-    // 7. Send to Discord Webhook
-    const res = await fetch(discordUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: "System Alerts",
-        avatar_url: getAvatarUrl(embed.color),
-        embeds: [embed]
-      })
+    // 7. Send to Discord Webhook with retry
+    const res = await retryWithBackoff(async () => {
+      const response = await fetch(discordUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: "System Alerts",
+          avatar_url: getAvatarUrl(embed.color),
+          embeds: [embed]
+        })
+      });
+
+      if (!response.ok) {
+        const txt = await response.text();
+        console.log("Discord Payload:", JSON.stringify(embed)); // Debugging help
+        throw new Error(`Discord webhook failed: ${response.status} - ${txt}`);
+      }
+
+      return response;
+    }).catch(error => {
+      console.error("Discord webhook failed after retries:", error);
+      return new Response(`Discord error: ${error.message}`, { status: 500 });
     });
 
-    if (!res.ok) {
-      const txt = await res.text();
-      console.log("Discord Payload:", JSON.stringify(embed)); // Debugging help
-      return new Response(`Discord error: ${res.status} - ${txt}`, { status: 500 });
+    if (res instanceof Response && res.status === 500) {
+      return res;
     }
 
     return new Response("Sent to Discord!", { status: 200 });
