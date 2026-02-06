@@ -46,6 +46,53 @@ export default {
 
     if (!payload) return new Response("No data", { status: 400 });
 
+    // 5a. Smart payload trimming - Remove verbose technical details
+    function trimVerboseContent(text) {
+      try {
+        // Patterns to remove (common verbose sections across different sources)
+        const verbosePatterns = [
+          // Email authentication headers
+          /SPF Result:[\s\S]*?(?=\n[A-Z][a-z]|\n\n|$)/gi,
+          /DKIM Result:[\s\S]*?(?=\n[A-Z][a-z]|\n\n|$)/gi,
+          /DMARC (?:Result|Policy|Info):[\s\S]*?(?=\n[A-Z][a-z]|\n\n|$)/gi,
+          /BIMI Location:[\s\S]*?(?=\n[A-Z][a-z]|\n\n|$)/gi,
+          /Message ID:[\s\S]*?(?=\n[A-Z][a-z]|\n\n|$)/gi,
+
+          // Full email headers section (if exists as a block)
+          /View Full Email Headers[\s\S]*?(?=\n\n[A-Z]|$)/gi,
+
+          // Long technical IDs and hashes
+          /[a-f0-9]{32,}/gi, // Replace long hex strings with placeholder
+        ];
+
+        let trimmed = text;
+
+        // Remove verbose sections
+        for (const pattern of verbosePatterns) {
+          trimmed = trimmed.replace(pattern, '');
+        }
+
+        // Clean up excessive whitespace
+        trimmed = trimmed.replace(/\n{3,}/g, '\n\n').trim();
+
+        // If we removed too much (>60% of original), return original
+        // This prevents breaking non-email messages
+        if (trimmed.length < text.length * 0.4) {
+          return text;
+        }
+
+        return trimmed.length > 0 ? trimmed : text;
+      } catch (e) {
+        console.error('Trimming failed:', e);
+        return text;
+      }
+    }
+
+    // Trim verbose content before sending to AI (can be disabled via query param)
+    const url = new URL(r.url);
+    const skipTrimming = url.searchParams.get('verbose') === 'true';
+    const processedPayload = skipTrimming ? payload : trimVerboseContent(payload);
+
     // 5. Process Message (LLM formatting to Rich Discord Embed)
     async function getDiscordEmbed(text) {
       const models = [
@@ -78,27 +125,32 @@ export default {
                 messages: [
                 {
                   role: "system",
-                  content: `You are an expert Discord notification formatter. Analyze the input log or message and structure it into a beautiful, high-readability JSON Embed.
+                  content: `You are a Discord notification formatter. Create concise, readable notifications from any input source.
 
                   Rules:
-                  1. **Title**: Summarize the event (max 256 chars). Start with a relevant Emoji (e.g., 🚨 for errors, ✅ for success, 📦 for data).
-                  2. **Description**: Provide the main context in Markdown (max 2000 chars). Use **bold** for emphasis.
-                  3. **Fields**: CRITICAL. If the input has structured data (IDs, IP addresses, Status Codes, Keys, Usernames), extract them into the 'fields' array.
-                     - Format: { "name": "Field Name", "value": "Field Value", "inline": true }
-                     - Use 'inline': true for short data to create columns.
-                  4. **Color**:
-                     - Success/Info: 5763719 (Green)
-                     - Warning: 16776960 (Yellow)
-                     - Error/Critical: 15548997 (Red)
-                     - Default: 3447003 (Blue)
+                  1. **Title**: Short event summary (max 60 chars). Start with emoji: 🚨 error, ✅ success, ⚠️ warning, 📦 info, 🔔 general.
+                  2. **Description**: 1-2 sentences max (200 chars). Answer: What happened? Skip technical jargon.
+                  3. **Fields**: Only 3-4 CRITICAL fields. Choose from:
+                     - Event/Action type
+                     - Who/What (user, device, service)
+                     - When (if time is critical)
+                     - Where (location, IP, endpoint)
+                     - Status/Result
 
-                  Output ONLY raw JSON with this structure:
+                     SKIP: Technical IDs, hashes, authentication results, email routing, headers, long URLs, verbose logs.
+                     Format: { "name": "Key", "value": "Short value", "inline": true }
+
+                  4. **Color**: 5763719=green(success), 16776960=yellow(warning), 15548997=red(error), 3447003=blue(info)
+
+                  5. **Be ruthless**: If a field isn't immediately actionable or meaningful to a human, SKIP IT.
+
+                  Output ONLY this JSON:
                   {
-                    "title": "...",
-                    "description": "...",
-                    "color": 12345,
-                    "fields": [ { "name": "...", "value": "...", "inline": true } ],
-                    "footer": { "text": "AI Formatted" }
+                    "title": "🔔 Event Name",
+                    "description": "Brief explanation",
+                    "color": 5763719,
+                    "fields": [ { "name": "Key", "value": "Value", "inline": true } ],
+                    "footer": { "text": "Notification" }
                   }`
                 },
                 { role: "user", content: text }
@@ -134,7 +186,7 @@ export default {
       return fallback;
     }
 
-    const embed = await getDiscordEmbed(payload);
+    const embed = await getDiscordEmbed(processedPayload);
 
     // 6. Select avatar based on notification type
     function getAvatarUrl(color) {
