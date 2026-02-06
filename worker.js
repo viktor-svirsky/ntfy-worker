@@ -33,10 +33,8 @@ export default {
     // 5. Process Message (LLM formatting to Rich Discord Embed)
     async function getDiscordEmbed(text) {
       const models = [
-        "google/gemini-2.0-flash-lite-preview-02-05:free",
-        "google/gemini-2.0-pro-exp-02-05:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "microsoft/phi-3-medium-128k-instruct:free",
+        "z-ai/glm-4.5-air:free",
+        "arcee-ai/trinity-mini:free",
       ];
 
       // Fallback structure
