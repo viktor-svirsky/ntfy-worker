@@ -21,19 +21,13 @@ export default {
       return new Response("Only POST", { status: 405, headers: { Allow: "POST" } });
     }
 
-    // 3. Validate Configuration
-    const discordUrl = e.DISCORD_WEBHOOK?.trim();
-    if (!discordUrl) {
-      return new Response("Error: Missing DISCORD_WEBHOOK_URL environment variable.", { status: 500 });
-    }
-
-    // 4. Validate AI Key
+    // 3. Validate AI Key
     const openrouterKey = e.OPENROUTER_API_KEY?.trim();
     if (!openrouterKey) {
       return new Response("Missing OPENROUTER_API_KEY env", { status: 500 });
     }
 
-    // 5. Parse Body
+    // 4. Parse Body
     let payload;
     try {
       const contentType = r.headers.get("content-type") || "";
@@ -46,7 +40,7 @@ export default {
 
     if (!payload) return new Response("No data", { status: 400 });
 
-    // 5a. Smart payload trimming - Remove verbose technical details
+    // 4a. Smart payload trimming - Remove verbose technical details
     function trimVerboseContent(text) {
       try {
         // Patterns to remove (common verbose sections across different sources)
@@ -62,7 +56,7 @@ export default {
           /View Full Email Headers[\s\S]*?(?=\n\n[A-Z]|$)/gi,
 
           // Long technical IDs and hashes
-          /[a-f0-9]{32,}/gi, // Replace long hex strings with placeholder
+          /[a-f0-9]{32,}/gi,
         ];
 
         let trimmed = text;
@@ -76,7 +70,6 @@ export default {
         trimmed = trimmed.replace(/\n{3,}/g, '\n\n').trim();
 
         // If we removed too much (>60% of original), return original
-        // This prevents breaking non-email messages
         if (trimmed.length < text.length * 0.4) {
           return text;
         }
@@ -88,13 +81,12 @@ export default {
       }
     }
 
-    // Trim verbose content before sending to AI (can be disabled via query param)
     const url = new URL(r.url);
     const skipTrimming = url.searchParams.get('verbose') === 'true';
     const processedPayload = skipTrimming ? payload : trimVerboseContent(payload);
 
-    // 5. Process Message (LLM formatting to Rich Discord Embed)
-    async function getDiscordEmbed(text) {
+    // 5. Process Message (LLM formatting for ntfy notification)
+    async function getNtfyNotification(text) {
       const models = [
         "z-ai/glm-4.5-air:free",
         "arcee-ai/trinity-mini:free",
@@ -102,11 +94,10 @@ export default {
 
       // Fallback structure
       const fallback = {
-        title: "🔔 Notification",
-        description: text.substring(0, 2000), // Safety clip
-        color: 9807270, // Grey
-        footer: { text: "Processed via Worker (Fallback)" },
-        timestamp: new Date().toISOString()
+        title: "Notification",
+        message: text.substring(0, 4096),
+        priority: "default",
+        tags: "bell"
       };
 
       for (const model of models) {
@@ -118,44 +109,32 @@ export default {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${openrouterKey}`,
                 "HTTP-Referer": "https://yourdomain.com",
-                "X-Title": "discord-worker"
+                "X-Title": "ntfy-worker"
               },
               body: JSON.stringify({
                 model,
                 messages: [
-                {
-                  role: "system",
-                  content: `You are a Discord notification formatter. Create concise, readable notifications from any input source.
-
-                  Rules:
-                  1. **Title**: Short event summary (max 60 chars). Start with emoji: 🚨 error, ✅ success, ⚠️ warning, 📦 info, 🔔 general.
-                  2. **Description**: 1-2 sentences max (200 chars). Answer: What happened? Skip technical jargon.
-                  3. **Fields**: Only 3-4 CRITICAL fields. Choose from:
-                     - Event/Action type
-                     - Who/What (user, device, service)
-                     - When (if time is critical)
-                     - Where (location, IP, endpoint)
-                     - Status/Result
-
-                     SKIP: Technical IDs, hashes, authentication results, email routing, headers, long URLs, verbose logs.
-                     Format: { "name": "Key", "value": "Short value", "inline": true }
-
-                  4. **Color**: 5763719=green(success), 16776960=yellow(warning), 15548997=red(error), 3447003=blue(info)
-
-                  5. **Be ruthless**: If a field isn't immediately actionable or meaningful to a human, SKIP IT.
-
-                  Output ONLY this JSON:
                   {
-                    "title": "🔔 Event Name",
-                    "description": "Brief explanation",
-                    "color": 5763719,
-                    "fields": [ { "name": "Key", "value": "Value", "inline": true } ],
-                    "footer": { "text": "Notification" }
-                  }`
-                },
-                { role: "user", content: text }
-              ],
-              response_format: { type: "json_object" }
+                    role: "system",
+                    content: `You are a notification formatter for ntfy. Create concise, readable notifications from any input.
+
+Rules:
+1. **title**: Short event summary (max 60 chars). No emoji here.
+2. **message**: 1-3 sentences max. What happened? Skip technical jargon.
+3. **priority**: One of: "urgent" (critical errors/outages), "high" (warnings/failures), "default" (info), "low" (minor events), "min" (background).
+4. **tags**: One ntfy tag shortcode (e.g. "rotating_light" for errors, "white_check_mark" for success, "warning" for warnings, "information_source" for info, "bell" for general).
+
+Output ONLY this JSON:
+{
+  "title": "Event Name",
+  "message": "Brief explanation",
+  "priority": "default",
+  "tags": "bell"
+}`
+                  },
+                  { role: "user", content: text }
+                ],
+                response_format: { type: "json_object" }
               })
             });
             if (!response.ok) {
@@ -172,11 +151,7 @@ export default {
           if (content) {
             // cleanup markdown blocks if LLM adds them despite instructions
             content = content.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '');
-            const parsed = JSON.parse(content);
-
-            // Add timestamp client-side to ensure accuracy
-            parsed.timestamp = new Date().toISOString();
-            return parsed;
+            return JSON.parse(content);
           }
         } catch (e) {
           console.error(`Model ${model} failed:`, e);
@@ -186,48 +161,39 @@ export default {
       return fallback;
     }
 
-    const embed = await getDiscordEmbed(processedPayload);
+    const notification = await getNtfyNotification(processedPayload);
 
-    // 6. Select avatar based on notification type
-    function getAvatarUrl(color) {
-      const avatars = {
-        5763719: "https://cdn-icons-png.flaticon.com/512/190/190411.png",  // Green - Success/Check
-        3447003: "https://cdn-icons-png.flaticon.com/512/2965/2965279.png", // Blue - Info
-        16776960: "https://cdn-icons-png.flaticon.com/512/564/564619.png",  // Yellow - Warning
-        15548997: "https://cdn-icons-png.flaticon.com/512/564/564593.png",  // Red - Error/Alert
-        9807270: "https://cdn-icons-png.flaticon.com/512/4712/4712109.png"  // Grey - Default/Notification
-      };
-      return avatars[color] || avatars[9807270]; // Default to grey notification icon
-    }
+    // 6. Send to ntfy
+    const NTFY_TOPIC = "fupvaK-6nytti-hopmyc";
 
-    // 7. Send to Discord Webhook with retry
     const res = await retryWithBackoff(async () => {
-      const response = await fetch(discordUrl, {
+      const response = await fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: "System Alerts",
-          avatar_url: getAvatarUrl(embed.color),
-          embeds: [embed]
-        })
+        headers: {
+          "Content-Type": "text/plain",
+          "Title": notification.title || "Notification",
+          "Priority": notification.priority || "default",
+          "Tags": notification.tags || "bell"
+        },
+        body: notification.message || processedPayload.substring(0, 4096)
       });
 
       if (!response.ok) {
         const txt = await response.text();
-        console.log("Discord Payload:", JSON.stringify(embed)); // Debugging help
-        throw new Error(`Discord webhook failed: ${response.status} - ${txt}`);
+        console.log("ntfy Payload:", JSON.stringify(notification)); // Debugging help
+        throw new Error(`ntfy failed: ${response.status} - ${txt}`);
       }
 
       return response;
     }).catch(error => {
-      console.error("Discord webhook failed after retries:", error);
-      return new Response(`Discord error: ${error.message}`, { status: 500 });
+      console.error("ntfy publish failed after retries:", error);
+      return new Response(`ntfy error: ${error.message}`, { status: 500 });
     });
 
     if (res instanceof Response && res.status === 500) {
       return res;
     }
 
-    return new Response("Sent to Discord!", { status: 200 });
+    return new Response("Sent to ntfy!", { status: 200 });
   }
 };

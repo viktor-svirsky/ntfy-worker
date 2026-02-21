@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock environment for testing
 const mockEnv = {
-  DISCORD_WEBHOOK: 'https://discord.com/api/webhooks/test',
   OPENROUTER_API_KEY: 'test-api-key'
 };
 
@@ -54,14 +53,8 @@ describe('NTFY Worker', () => {
   });
 
   describe('Environment Configuration', () => {
-    it('should return error if DISCORD_WEBHOOK is missing', async () => {
-      const env = { OPENROUTER_API_KEY: 'test-key' };
-      // Test with missing webhook
-      // This would require worker export for unit testing
-    });
-
     it('should return error if OPENROUTER_API_KEY is missing', async () => {
-      const env = { DISCORD_WEBHOOK: 'https://test.com' };
+      const env = {};
       // Test with missing API key
     });
   });
@@ -93,7 +86,6 @@ describe('NTFY Worker', () => {
 
     it('should use exponential backoff', async () => {
       const delays = [];
-      const startTime = Date.now();
 
       const retryWithBackoff = async (fn, maxRetries = 3, baseDelay = 100) => {
         for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -119,53 +111,6 @@ describe('NTFY Worker', () => {
     });
   });
 
-  describe('Avatar Selection', () => {
-    it('should return correct avatar for success (green)', () => {
-      const getAvatarUrl = (color) => {
-        const avatars = {
-          5763719: "https://cdn-icons-png.flaticon.com/512/190/190411.png",
-          3447003: "https://cdn-icons-png.flaticon.com/512/2965/2965279.png",
-          16776960: "https://cdn-icons-png.flaticon.com/512/564/564619.png",
-          15548997: "https://cdn-icons-png.flaticon.com/512/564/564593.png",
-          9807270: "https://cdn-icons-png.flaticon.com/512/4712/4712109.png"
-        };
-        return avatars[color] || avatars[9807270];
-      };
-
-      expect(getAvatarUrl(5763719)).toBe("https://cdn-icons-png.flaticon.com/512/190/190411.png");
-    });
-
-    it('should return correct avatar for error (red)', () => {
-      const getAvatarUrl = (color) => {
-        const avatars = {
-          5763719: "https://cdn-icons-png.flaticon.com/512/190/190411.png",
-          3447003: "https://cdn-icons-png.flaticon.com/512/2965/2965279.png",
-          16776960: "https://cdn-icons-png.flaticon.com/512/564/564619.png",
-          15548997: "https://cdn-icons-png.flaticon.com/512/564/564593.png",
-          9807270: "https://cdn-icons-png.flaticon.com/512/4712/4712109.png"
-        };
-        return avatars[color] || avatars[9807270];
-      };
-
-      expect(getAvatarUrl(15548997)).toBe("https://cdn-icons-png.flaticon.com/512/564/564593.png");
-    });
-
-    it('should return default avatar for unknown color', () => {
-      const getAvatarUrl = (color) => {
-        const avatars = {
-          5763719: "https://cdn-icons-png.flaticon.com/512/190/190411.png",
-          3447003: "https://cdn-icons-png.flaticon.com/512/2965/2965279.png",
-          16776960: "https://cdn-icons-png.flaticon.com/512/564/564619.png",
-          15548997: "https://cdn-icons-png.flaticon.com/512/564/564593.png",
-          9807270: "https://cdn-icons-png.flaticon.com/512/4712/4712109.png"
-        };
-        return avatars[color] || avatars[9807270];
-      };
-
-      expect(getAvatarUrl(999999)).toBe("https://cdn-icons-png.flaticon.com/512/4712/4712109.png");
-    });
-  });
-
   describe('AI Model Fallback', () => {
     it('should try primary model first', () => {
       const models = ["z-ai/glm-4.5-air:free", "arcee-ai/trinity-mini:free"];
@@ -179,15 +124,15 @@ describe('NTFY Worker', () => {
 
     it('should use static fallback if all models fail', () => {
       const fallback = {
-        title: "🔔 Notification",
-        description: "test",
-        color: 9807270,
-        footer: { text: "Processed via Worker (Fallback)" },
-        timestamp: new Date().toISOString()
+        title: "Notification",
+        message: "test",
+        priority: "default",
+        tags: "bell"
       };
 
-      expect(fallback.title).toBe("🔔 Notification");
-      expect(fallback.color).toBe(9807270);
+      expect(fallback.title).toBe("Notification");
+      expect(fallback.priority).toBe("default");
+      expect(fallback.tags).toBe("bell");
     });
   });
 
@@ -205,38 +150,60 @@ describe('NTFY Worker', () => {
       expect(textPayload).toBe("Simple text message");
     });
 
-    it('should truncate long descriptions to 2000 chars', () => {
-      const longText = 'a'.repeat(3000);
-      const truncated = longText.substring(0, 2000);
+    it('should truncate long messages to 4096 chars', () => {
+      const longText = 'a'.repeat(5000);
+      const truncated = longText.substring(0, 4096);
 
-      expect(truncated.length).toBe(2000);
+      expect(truncated.length).toBe(4096);
     });
   });
 
-  describe('Discord Embed Structure', () => {
-    it('should have required embed fields', () => {
-      const embed = {
-        title: "Test",
-        description: "Description",
-        color: 3447003,
-        footer: { text: "AI Formatted" },
-        timestamp: new Date().toISOString()
+  describe('ntfy Notification Structure', () => {
+    it('should have required notification fields', () => {
+      const notification = {
+        title: "Test Event",
+        message: "Something happened",
+        priority: "default",
+        tags: "bell"
       };
 
-      expect(embed).toHaveProperty('title');
-      expect(embed).toHaveProperty('description');
-      expect(embed).toHaveProperty('color');
-      expect(embed).toHaveProperty('footer');
-      expect(embed).toHaveProperty('timestamp');
+      expect(notification).toHaveProperty('title');
+      expect(notification).toHaveProperty('message');
+      expect(notification).toHaveProperty('priority');
+      expect(notification).toHaveProperty('tags');
     });
 
-    it('should have valid color codes', () => {
-      const validColors = [5763719, 3447003, 16776960, 15548997, 9807270];
+    it('should use valid ntfy priority values', () => {
+      const validPriorities = ["urgent", "high", "default", "low", "min"];
 
-      validColors.forEach(color => {
-        expect(color).toBeGreaterThan(0);
-        expect(color).toBeLessThan(16777216); // Max RGB value
+      validPriorities.forEach(priority => {
+        expect(typeof priority).toBe("string");
+        expect(priority.length).toBeGreaterThan(0);
       });
+    });
+
+    it('should map error events to urgent/high priority', () => {
+      const errorNotification = {
+        title: "Database Connection Failed",
+        message: "Connection to primary DB timed out",
+        priority: "urgent",
+        tags: "rotating_light"
+      };
+
+      expect(["urgent", "high"]).toContain(errorNotification.priority);
+      expect(errorNotification.tags).toBe("rotating_light");
+    });
+
+    it('should map success events to default/low priority', () => {
+      const successNotification = {
+        title: "Deployment Successful",
+        message: "App deployed to production",
+        priority: "default",
+        tags: "white_check_mark"
+      };
+
+      expect(["default", "low"]).toContain(successNotification.priority);
+      expect(successNotification.tags).toBe("white_check_mark");
     });
   });
 
@@ -266,7 +233,7 @@ describe('NTFY Worker', () => {
 describe('Integration Tests', () => {
   it('should successfully process a complete request flow', async () => {
     // This would require a full integration test environment
-    // with mocked OpenRouter and Discord APIs
+    // with mocked OpenRouter and ntfy APIs
     expect(true).toBe(true);
   });
 });

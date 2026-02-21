@@ -1,24 +1,26 @@
 # NTFY Worker
 
-Cloudflare Worker that receives notifications and sends them to Discord with AI-powered formatting.
+Cloudflare Worker that receives notifications and publishes them to ntfy with AI-powered formatting.
 
 ## Features
 
 - Accepts POST requests with JSON or text payloads
-- Uses AI models to format messages into rich Discord embeds
+- Uses AI models to format messages into concise ntfy notifications (title, message, priority, tags)
 - Supports multiple AI models with fallback (z-ai/glm-4.5-air:free → arcee-ai/trinity-mini:free)
-- Dynamic avatars based on notification type (success, error, warning, info)
 - **Automatic retry logic with exponential backoff**
   - Retries failed API calls up to 3 times
   - Exponential backoff: 1s, 2s, 4s
-  - Applies to both OpenRouter API and Discord webhook
+  - Applies to both OpenRouter API and ntfy publish
 - Comprehensive test suite with unit and integration tests
 
 ## Environment Variables
 
 Required secrets:
-- `DISCORD_WEBHOOK` - Your Discord webhook URL
 - `OPENROUTER_API_KEY` - Your OpenRouter API key
+
+## ntfy Topic
+
+Notifications are published to topic `fupvaK-6nytti-hopmyc` on `ntfy.sh`.
 
 ## Setup
 
@@ -29,7 +31,6 @@ npm install
 
 2. Set secrets:
 ```bash
-wrangler secret put DISCORD_WEBHOOK
 wrangler secret put OPENROUTER_API_KEY
 ```
 
@@ -74,7 +75,7 @@ npm run test:coverage    # Run tests with coverage report
 The test suite includes:
 - **Request validation tests** - Method checks, payload parsing
 - **Retry logic tests** - Exponential backoff, max retry limits
-- **Avatar selection tests** - Color-to-icon mapping
+- **ntfy notification structure tests** - Priority and tag mapping
 - **AI model fallback tests** - Primary → secondary → static fallback
 - **Integration tests** - End-to-end notification flows
 - **Error handling tests** - Malformed JSON, API failures
@@ -86,10 +87,6 @@ The worker implements robust retry logic:
 - **Backoff strategy**: Exponential (1s → 2s → 4s)
 - **Applied to**:
   - OpenRouter API calls (AI formatting)
-  - Discord webhook deliveries
+  - ntfy publish requests
 
 If all retries fail, the worker falls back to a static notification format.
-
-## Version
-
-Deployed from Cloudflare version: be27784c-a3d9-48a3-ab35-a19643d55ec2

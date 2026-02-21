@@ -7,7 +7,6 @@ import { describe, it, expect, beforeAll } from 'vitest';
 
 describe('Integration Tests', () => {
   const mockEnv = {
-    DISCORD_WEBHOOK: 'https://discord.com/api/webhooks/123/test',
     OPENROUTER_API_KEY: 'sk-test-key-123'
   };
 
@@ -18,11 +17,10 @@ describe('Integration Tests', () => {
         choices: [{
           message: {
             content: JSON.stringify({
-              title: "📦 Test Notification",
-              description: "This is a test message",
-              color: 3447003,
-              fields: [],
-              footer: { text: "AI Formatted" }
+              title: "Test Notification",
+              message: "This is a test message",
+              priority: "default",
+              tags: "bell"
             })
           }
         }]
@@ -32,55 +30,40 @@ describe('Integration Tests', () => {
       expect(mockOpenRouterResponse.choices[0].message.content).toContain('Test Notification');
     });
 
-    it('should handle error notifications with red color', async () => {
-      const errorEmbed = {
-        title: "🚨 Error Occurred",
-        description: "Database connection failed",
-        color: 15548997, // Red
-        fields: [
-          { name: "Error Code", value: "500", inline: true },
-          { name: "Service", value: "Database", inline: true }
-        ],
-        footer: { text: "AI Formatted" },
-        timestamp: new Date().toISOString()
+    it('should handle error notifications with urgent priority', async () => {
+      const errorNotification = {
+        title: "Error Occurred",
+        message: "Database connection failed",
+        priority: "urgent",
+        tags: "rotating_light"
       };
 
-      expect(errorEmbed.color).toBe(15548997);
-      expect(errorEmbed.title).toContain('🚨');
+      expect(errorNotification.priority).toBe("urgent");
+      expect(errorNotification.tags).toBe("rotating_light");
     });
 
-    it('should handle success notifications with green color', async () => {
-      const successEmbed = {
-        title: "✅ Deployment Successful",
-        description: "Application deployed to production",
-        color: 5763719, // Green
-        fields: [
-          { name: "Version", value: "v1.2.3", inline: true },
-          { name: "Environment", value: "Production", inline: true }
-        ],
-        footer: { text: "AI Formatted" },
-        timestamp: new Date().toISOString()
+    it('should handle success notifications with default priority', async () => {
+      const successNotification = {
+        title: "Deployment Successful",
+        message: "Application deployed to production",
+        priority: "default",
+        tags: "white_check_mark"
       };
 
-      expect(successEmbed.color).toBe(5763719);
-      expect(successEmbed.title).toContain('✅');
+      expect(successNotification.priority).toBe("default");
+      expect(successNotification.tags).toBe("white_check_mark");
     });
 
-    it('should handle warning notifications with yellow color', async () => {
-      const warningEmbed = {
-        title: "⚠️ High Memory Usage",
-        description: "Memory usage at 85%",
-        color: 16776960, // Yellow
-        fields: [
-          { name: "Current", value: "85%", inline: true },
-          { name: "Threshold", value: "80%", inline: true }
-        ],
-        footer: { text: "AI Formatted" },
-        timestamp: new Date().toISOString()
+    it('should handle warning notifications with high priority', async () => {
+      const warningNotification = {
+        title: "High Memory Usage",
+        message: "Memory usage at 85%, approaching threshold",
+        priority: "high",
+        tags: "warning"
       };
 
-      expect(warningEmbed.color).toBe(16776960);
-      expect(warningEmbed.title).toContain('⚠️');
+      expect(warningNotification.priority).toBe("high");
+      expect(warningNotification.tags).toBe("warning");
     });
   });
 
@@ -155,14 +138,15 @@ describe('Integration Tests', () => {
 
       usedFallback = true;
       const fallback = {
-        title: "🔔 Notification",
-        description: "test",
-        color: 9807270,
-        footer: { text: "Processed via Worker (Fallback)" }
+        title: "Notification",
+        message: "test",
+        priority: "default",
+        tags: "bell"
       };
 
       expect(usedFallback).toBe(true);
-      expect(fallback.color).toBe(9807270);
+      expect(fallback.priority).toBe("default");
+      expect(fallback.tags).toBe("bell");
     });
   });
 
@@ -188,44 +172,37 @@ describe('Integration Tests', () => {
 
     it('should handle large payloads', async () => {
       const largePayload = 'x'.repeat(5000);
-      const truncated = largePayload.substring(0, 2000);
+      const truncated = largePayload.substring(0, 4096);
 
-      expect(truncated.length).toBe(2000);
+      expect(truncated.length).toBe(4096);
       expect(largePayload.length).toBeGreaterThan(truncated.length);
     });
   });
 
-  describe('Discord Webhook Integration', () => {
-    it('should format webhook payload correctly', () => {
-      const webhookPayload = {
-        username: "System Alerts",
-        avatar_url: "https://cdn-icons-png.flaticon.com/512/4712/4712109.png",
-        embeds: [{
-          title: "Test",
-          description: "Test message",
-          color: 3447003,
-          footer: { text: "AI Formatted" },
-          timestamp: new Date().toISOString()
-        }]
+  describe('ntfy Integration', () => {
+    it('should format ntfy payload correctly', () => {
+      const notification = {
+        title: "Test Event",
+        message: "Something happened on the server",
+        priority: "default",
+        tags: "bell"
       };
 
-      expect(webhookPayload).toHaveProperty('username');
-      expect(webhookPayload).toHaveProperty('avatar_url');
-      expect(webhookPayload).toHaveProperty('embeds');
-      expect(webhookPayload.embeds).toHaveLength(1);
+      expect(notification).toHaveProperty('title');
+      expect(notification).toHaveProperty('message');
+      expect(notification).toHaveProperty('priority');
+      expect(notification).toHaveProperty('tags');
     });
 
-    it('should use correct avatar based on notification type', () => {
-      const colorToAvatar = {
-        5763719: "https://cdn-icons-png.flaticon.com/512/190/190411.png",
-        15548997: "https://cdn-icons-png.flaticon.com/512/564/564593.png",
-        16776960: "https://cdn-icons-png.flaticon.com/512/564/564619.png"
-      };
+    it('should use correct topic', () => {
+      const NTFY_TOPIC = "fupvaK-6nytti-hopmyc";
+      expect(NTFY_TOPIC).toBe("fupvaK-6nytti-hopmyc");
+    });
 
-      Object.entries(colorToAvatar).forEach(([color, avatar]) => {
-        expect(avatar).toContain('flaticon.com');
-        expect(avatar).toContain('.png');
-      });
+    it('should send to correct ntfy endpoint', () => {
+      const NTFY_TOPIC = "fupvaK-6nytti-hopmyc";
+      const endpoint = `https://ntfy.sh/${NTFY_TOPIC}`;
+      expect(endpoint).toBe("https://ntfy.sh/fupvaK-6nytti-hopmyc");
     });
   });
 
@@ -251,13 +228,12 @@ describe('Integration Tests', () => {
       expect(result.ok).toBe(true);
     });
 
-    it('should recover from Discord webhook errors', async () => {
-      // Similar to OpenRouter recovery test
+    it('should recover from ntfy publish errors', async () => {
       let attempts = 0;
-      const mockWebhookCall = async () => {
+      const mockNtfyCall = async () => {
         attempts++;
         if (attempts === 1) {
-          throw new Error('Webhook timeout');
+          throw new Error('ntfy timeout');
         }
         return { status: 200, ok: true };
       };
@@ -265,7 +241,7 @@ describe('Integration Tests', () => {
       let response;
       for (let i = 0; i < 2; i++) {
         try {
-          response = await mockWebhookCall();
+          response = await mockNtfyCall();
           break;
         } catch (e) {
           if (i === 1) throw e;
